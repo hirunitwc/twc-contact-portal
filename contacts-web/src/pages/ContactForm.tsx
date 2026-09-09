@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { contactSchema, type ContactFormData } from '../schemas/contact.schema';
 import AppLayout from '../components/AppLayout';
 import { api } from '../lib/api';
@@ -12,6 +12,8 @@ export default function ContactForm() {
   const { id } = useParams(); // present only on /contacts/edit/:id
   const isEditMode = Boolean(id);
   const queryClient = useQueryClient();
+
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const {
     register,
@@ -40,14 +42,15 @@ export default function ContactForm() {
 
   const mutation = useMutation({
     mutationFn: async (data: ContactFormData) => {
-      if (isEditMode) {
-        return api.put(`/contacts/${id}`, data);
-      }
+      if (isEditMode) return api.put(`/contacts/${id}`, data);
       return api.post('/contacts', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
       navigate('/contacts');
+    },
+    onError: (error: any) => {
+      setServerError(error.response?.data?.message || 'Failed to save contact. Please try again.');
     },
   });
 

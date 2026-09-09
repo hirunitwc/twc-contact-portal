@@ -6,6 +6,7 @@ import AppLayout from '../components/AppLayout';
 import Modal from '../components/Modal';
 import Avatar from '../components/Avatar';
 import { api } from '../lib/api';
+import { contactSchema } from '../schemas/contact.schema';
 
 interface Contact {
   id: number;
@@ -25,6 +26,10 @@ export default function Contacts() {
   const [showSaved, setShowSaved] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+
   const { data: contacts, isLoading } = useQuery<Contact[]>({
     queryKey: ['contacts'],
     queryFn: async () => (await api.get('/contacts')).data,
@@ -38,6 +43,9 @@ export default function Contacts() {
       setEditingId(null);
       setShowSaved(true);
     },
+    onError: (error: any) => {
+      setErrorMessage(error.response?.data?.message || 'Failed to save contact. Please try again.');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -47,16 +55,35 @@ export default function Contacts() {
       setDeleteTarget(null);
       setShowDeleted(true);
     },
+    onError: (error: any) => {
+      setDeleteTarget(null);
+      setErrorMessage(error.response?.data?.message || 'Failed to delete contact. Please try again.');
+    },
   });
 
   const startEdit = (contact: Contact) => {
     setEditingId(contact.id);
     setEditForm(contact);
+    setEditErrors({});
   };
 
   const saveEdit = () => {
     if (editingId == null) return;
-    updateMutation.mutate({ id: editingId, data: editForm });
+
+    const result = contactSchema.safeParse(editForm);
+
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      result.error.issues.forEach((issue) => {
+        const field = issue.path[0] as string;
+        fieldErrors[field] = issue.message;
+      });
+      setEditErrors(fieldErrors);
+      return; // stop here — don't call the mutation
+    }
+
+    setEditErrors({});
+    updateMutation.mutate({ id: editingId, data: result.data });
   };
 
   return (
@@ -102,11 +129,17 @@ export default function Contacts() {
                     </td>
                     <td className="px-2 py-3">
                       {isEditing ? (
-                        <input
-                          value={editForm.name ?? ''}
-                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          className="w-full rounded border border-gray-300 px-2 py-1"
-                        />
+                        <div>
+                          <input
+                            value={editForm.name ?? ''}
+                            onChange={(e) => {
+                              setEditForm({ ...editForm, name: e.target.value });
+                              if (editErrors.name) setEditErrors({ ...editErrors, name: '' });
+                            }}
+                            className={`w-full rounded border px-2 py-1 ${editErrors.name ? 'border-red-400' : 'border-gray-300'}`}
+                          />
+                          {editErrors.name && <p className="mt-1 text-xs text-red-600">{editErrors.name}</p>}
+                        </div>
                       ) : (
                         contact.name
                       )}
@@ -114,11 +147,17 @@ export default function Contacts() {
                     <td className="px-2 py-3">{contact.gender ?? '-'}</td>
                     <td className="px-2 py-3">
                       {isEditing ? (
-                        <input
-                          value={editForm.email ?? ''}
-                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                          className="w-full rounded border border-gray-300 px-2 py-1"
-                        />
+                        <div>
+                          <input
+                            value={editForm.email ?? ''}
+                            onChange={(e) => {
+                              setEditForm({ ...editForm, email: e.target.value });
+                              if (editErrors.email) setEditErrors({ ...editErrors, email: '' });
+                            }}
+                            className={`w-full rounded border px-2 py-1 ${editErrors.email ? 'border-red-400' : 'border-gray-300'}`}
+                          />
+                          {editErrors.email && <p className="mt-1 text-xs text-red-600">{editErrors.email}</p>}
+                        </div>
                       ) : (
                         contact.email
                       )}
@@ -200,6 +239,16 @@ export default function Contacts() {
         <p className="text-lg font-medium text-teal-900">Your contact has been deleted successfully!</p>
         <button
           onClick={() => setShowDeleted(false)}
+          className="mt-5 rounded-full bg-teal-800 px-8 py-2 text-sm font-medium text-white hover:bg-teal-900"
+        >
+          Okay
+        </button>
+      </Modal>
+
+      <Modal isOpen={!!errorMessage} onClose={() => setErrorMessage(null)}>
+        <p className="text-lg font-medium text-red-700">{errorMessage}</p>
+        <button
+          onClick={() => setErrorMessage(null)}
           className="mt-5 rounded-full bg-teal-800 px-8 py-2 text-sm font-medium text-white hover:bg-teal-900"
         >
           Okay
